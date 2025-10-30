@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多模型自动交易监控面板</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-left">
+                <i class="fas fa-robot"></i>
+                <h1>多模型自动交易机器人</h1>
+                <span class="status-badge" id="statusBadge">运行中</span>
+            </div>
+            <div class="header-center">
+                <div class="ai-model-info">
+                    <i class="fas fa-brain"></i>
+                    <div class="ai-model-details">
+                        <div class="ai-model-name" id="aiModelName">加载中...</div>
+                        <div class="ai-model-status">
+                            <span class="status-dot" id="aiStatusDot"></span>
+                            <span class="status-text" id="aiStatusText">检测中</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="update-time">
+                    <i class="far fa-clock"></i>
+                    <span id="lastUpdate">--</span>
+                </div>
+            </div>
+        </header>
+
+        <nav class="view-tabs" id="viewTabs"></nav>
+
+        <!-- 首页视图 -->
+        <section id="homeView" class="view-section">
+            <div class="home-top-cards" id="homeCards"></div>
+
+            <div class="card chart-card">
+                <div class="card-header">
+                    <i class="fas fa-chart-area"></i>
+                    <h3>模型总金额曲线</h3>
+                    <div class="range-selector" id="homeRangeSelector">
+                        <button class="range-btn active" data-range="1d">日</button>
+                        <button class="range-btn" data-range="7d">7天</button>
+                        <button class="range-btn" data-range="15d">15天</button>
+                        <button class="range-btn" data-range="1m">月</button>
+                        <button class="range-btn" data-range="1y">年</button>
+                        <button class="range-btn" data-range="all">全部</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="homeBalanceChart" class="chart"></div>
+                </div>
+            </div>
+
+            <div class="card home-table-card">
+                <div class="card-header">
+                    <i class="fas fa-table"></i>
+                    <h3>模型对比</h3>
+                </div>
+                <div class="card-body">
+                    <table class="overview-table">
+                        <thead>
+                            <tr>
+                                <th>模型</th>
+                                <th>总权益</th>
+                                <th>可用余额</th>
+                                <th>24h变化</th>
+                                <th>子账户</th>
+                            </tr>
+                        </thead>
+                        <tbody id="homeModelTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 模型视图 -->
+        <section id="modelView" class="view-section hidden">
+            <div class="symbol-tabs" id="symbolTabs"></div>
+
+            <div class="top-cards">
+                <div class="card account-card">
+                    <div class="card-header">
+                        <i class="fas fa-wallet"></i>
+                        <h3>账户信息</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="info-item">
+                            <span class="label">可用余额</span>
+                            <span class="value" id="usdtBalance">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">总权益</span>
+                            <span class="value" id="totalEquity">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">杠杆倍数</span>
+                            <span class="value leverage" id="leverage">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card price-card">
+                    <div class="card-header">
+                        <i class="fab fa-bitcoin" id="symbolIcon"></i>
+                        <h3 id="currentSymbol">BTC-USDT</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="price-display">
+                            <span class="price" id="currentPrice">--</span>
+                            <span class="price-change" id="priceChange">--</span>
+                        </div>
+                        <div class="price-info">
+                            <div class="info-item">
+                                <span class="label">交易周期</span>
+                                <span class="value" id="timeframe">--</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">模式</span>
+                                <span class="value" id="tradeMode">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card position-card">
+                    <div class="card-header">
+                        <i class="fas fa-chart-line"></i>
+                        <h3>当前持仓</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="position-display">
+                            <div class="position-type" id="positionType">无持仓</div>
+                            <div class="position-size" id="positionSize">--</div>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">入场价格</span>
+                            <span class="value" id="entryPrice">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">未实现盈亏</span>
+                            <span class="value pnl" id="unrealizedPnl">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card performance-card">
+                    <div class="card-header">
+                        <i class="fas fa-trophy"></i>
+                        <h3>绩效统计</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="info-item">
+                            <span class="label">总盈亏</span>
+                            <span class="value pnl" id="totalProfit">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">胜率</span>
+                            <span class="value" id="winRate">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">总交易次数</span>
+                            <span class="value" id="totalTrades">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-section">
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <i class="fas fa-chart-line"></i>
+                        <h3>模型总金额曲线</h3>
+                        <div class="range-selector" id="modelRangeSelector">
+                            <button class="range-btn active" data-range="7d">7天</button>
+                            <button class="range-btn" data-range="15d">15天</button>
+                            <button class="range-btn" data-range="1m">月</button>
+                            <button class="range-btn" data-range="1y">年</button>
+                            <button class="range-btn" data-range="all">全部</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="modelBalanceChart" class="chart"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bottom-section">
+                <div class="card decision-card">
+                    <div class="card-header">
+                        <i class="fas fa-lightbulb"></i>
+                        <h3>AI决策</h3>
+                    </div>
+                    <div class="card-body decisions" id="aiDecisionList"></div>
+                </div>
+
+                <div class="card trade-card">
+                    <div class="card-header">
+                        <i class="fas fa-exchange-alt"></i>
+                        <h3>交易记录</h3>
+                    </div>
+                    <div class="card-body trades" id="tradeHistory"></div>
+                </div>
+            </div>
+
+            <div class="stats-section">
+                <div class="card stats-card">
+                    <div class="card-header">
+                        <i class="fas fa-signal"></i>
+                        <h3>信号分布</h3>
+                    </div>
+                    <div class="card-body">
+                        <div id="signalChart" class="mini-chart"></div>
+                    </div>
+                </div>
+                <div class="card stats-card">
+                    <div class="card-header">
+                        <i class="fas fa-bullseye"></i>
+                        <h3>信心等级</h3>
+                    </div>
+                    <div class="card-body">
+                        <div id="confidenceChart" class="mini-chart"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

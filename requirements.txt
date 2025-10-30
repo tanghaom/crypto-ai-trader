@@ -1,0 +1,10 @@
+ccxt
+openai
+pandas
+schedule
+python-dotenv
+requests
+urllib3
+flask
+flask-cors
+openpyxl

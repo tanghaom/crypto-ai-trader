@@ -1,0 +1,771 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --primary-color: #1a73e8;
+    --success-color: #34a853;
+    --danger-color: #ea4335;
+    --warning-color: #fbbc04;
+    --bg-dark: #0f0f23;
+    --bg-card: #1a1a2e;
+    --bg-hover: #252540;
+    --text-primary: #ffffff;
+    --text-secondary: #9ca3af;
+    --border-color: #2d2d44;
+    --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4);
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+    color: var(--text-primary);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1800px;
+    margin: 0 auto;
+}
+
+/* 头部样式 */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-card);
+    padding: 20px 30px;
+    border-radius: 15px;
+    margin-bottom: 30px;
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--border-color);
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.header-left i {
+    font-size: 2em;
+    color: var(--primary-color);
+}
+
+.header h1 {
+    font-size: 1.8em;
+    font-weight: 600;
+}
+
+.status-badge {
+    background: linear-gradient(135deg, var(--success-color), #2d8a4e);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 0.85em;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(52, 168, 83, 0.3);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.header-center {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+}
+
+.ai-model-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(26, 115, 232, 0.1);
+    padding: 12px 20px;
+    border-radius: 12px;
+    border: 1px solid rgba(26, 115, 232, 0.3);
+}
+
+.ai-model-info i {
+    font-size: 1.5em;
+    color: var(--primary-color);
+}
+
+.ai-model-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ai-model-name {
+    font-size: 1em;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.ai-model-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85em;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    animation: blink 2s infinite;
+}
+
+.status-dot.connected {
+    background: var(--success-color);
+    box-shadow: 0 0 8px var(--success-color);
+}
+
+.status-dot.error {
+    background: var(--danger-color);
+    box-shadow: 0 0 8px var(--danger-color);
+}
+
+.status-dot.unknown {
+    background: var(--warning-color);
+    box-shadow: 0 0 8px var(--warning-color);
+}
+
+@keyframes blink {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.status-text {
+    color: var(--text-secondary);
+}
+
+.update-time {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 0.95em;
+}
+
+/* 卡片通用样式 */
+.card {
+    background: var(--bg-card);
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border-color);
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-lg);
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.card-header i {
+    font-size: 1.4em;
+    color: var(--primary-color);
+}
+
+.card-header h3 {
+    font-size: 1.2em;
+    font-weight: 600;
+}
+
+.view-tabs {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 25px;
+    flex-wrap: wrap;
+}
+
+.view-tab {
+    padding: 10px 20px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.view-tab:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.view-tab.active {
+    background: linear-gradient(135deg, #1a73e8 0%, #34a853 100%);
+    color: #fff;
+    border-color: #1a73e8;
+    box-shadow: 0 5px 15px rgba(26, 115, 232, 0.35);
+}
+
+.view-section.hidden {
+    display: none;
+}
+
+.range-selector {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.range-btn {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.range-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.range-btn.active {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #fff;
+    box-shadow: 0 2px 10px rgba(26, 115, 232, 0.3);
+}
+
+.home-top-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px;
+    margin-bottom: 25px;
+}
+
+.home-card .info-item {
+    padding: 10px 0;
+}
+
+.overview-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.overview-table th,
+.overview-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+}
+
+.overview-table tbody tr {
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.overview-table tbody tr:hover {
+    background: var(--bg-hover);
+}
+
+.change {
+    font-weight: 600;
+}
+
+.change.positive {
+    color: var(--success-color);
+}
+
+.change.negative {
+    color: var(--danger-color);
+}
+
+.symbol-tabs {
+    display: flex;
+    gap: 10px;
+    padding: 15px 20px;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border-radius: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.symbol-tab {
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+    color: #9ca3af;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.symbol-tab:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(26, 115, 232, 0.3);
+}
+
+.symbol-tab.active {
+    background: linear-gradient(135deg, #1a73e8 0%, #34a853 100%);
+    color: white;
+    border-color: #1a73e8;
+    box-shadow: 0 4px 12px rgba(26, 115, 232, 0.4);
+}
+
+.symbol-tab .symbol-price {
+    font-size: 0.85em;
+    opacity: 0.8;
+}
+
+.symbol-tab .symbol-change {
+    font-size: 0.75em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.symbol-tab .symbol-change.positive { color: var(--success-color); }
+.symbol-tab .symbol-change.negative { color: var(--danger-color); }
+/* 顶部卡片布局 */
+.top-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.info-item:last-child {
+    border-bottom: none;
+}
+
+.info-item .label {
+    color: var(--text-secondary);
+    font-size: 0.9em;
+}
+
+.info-item .value {
+    font-weight: 600;
+    font-size: 1.1em;
+}
+
+.leverage {
+    color: var(--warning-color);
+    font-weight: 700;
+}
+
+/* 价格显示 */
+.price-display {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.price {
+    font-size: 2.5em;
+    font-weight: 700;
+    color: var(--primary-color);
+    text-shadow: 0 2px 10px rgba(26, 115, 232, 0.3);
+}
+
+.price-change {
+    font-size: 1.1em;
+    font-weight: 600;
+    margin-top: 5px;
+    padding: 4px 12px;
+    border-radius: 10px;
+    display: inline-block;
+}
+
+.price-change.positive {
+    color: var(--success-color);
+    background: rgba(52, 168, 83, 0.1);
+}
+
+.price-change.negative {
+    color: var(--danger-color);
+    background: rgba(234, 67, 53, 0.1);
+}
+
+/* 持仓显示 */
+.position-display {
+    text-align: center;
+    margin-bottom: 15px;
+    padding: 15px;
+    border-radius: 10px;
+    background: var(--bg-hover);
+}
+
+.position-type {
+    font-size: 1.5em;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.position-type.long {
+    color: var(--success-color);
+}
+
+.position-type.short {
+    color: var(--danger-color);
+}
+
+.position-size {
+    font-size: 1.1em;
+    color: var(--text-secondary);
+}
+
+.pnl {
+    font-weight: 700;
+}
+
+.pnl.positive {
+    color: var(--success-color);
+}
+
+.pnl.negative {
+    color: var(--danger-color);
+}
+
+/* K线图表 */
+.chart-section {
+    margin-bottom: 30px;
+}
+
+.chart-card {
+    min-height: 500px;
+}
+
+.chart {
+    width: 100%;
+    height: 450px;
+}
+
+/* 底部区域 */
+.bottom-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+/* AI决策卡片 */
+.ai-latest {
+    background: var(--bg-hover);
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+}
+
+.ai-signal {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.signal-badge {
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 1.1em;
+}
+
+.signal-badge.BUY {
+    background: var(--success-color);
+    color: white;
+}
+
+.signal-badge.SELL {
+    background: var(--danger-color);
+    color: white;
+}
+
+.signal-badge.HOLD {
+    background: var(--warning-color);
+    color: white;
+}
+
+.confidence-badge {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9em;
+    background: var(--bg-dark);
+}
+
+.confidence-badge.HIGH {
+    border: 2px solid var(--success-color);
+    color: var(--success-color);
+}
+
+.confidence-badge.MEDIUM {
+    border: 2px solid var(--warning-color);
+    color: var(--warning-color);
+}
+
+.confidence-badge.LOW {
+    border: 2px solid var(--danger-color);
+    color: var(--danger-color);
+}
+
+.ai-reason {
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 10px;
+}
+
+.ai-prices {
+    display: flex;
+    gap: 20px;
+    font-size: 0.9em;
+}
+
+.stop-loss {
+    color: var(--danger-color);
+}
+
+.take-profit {
+    color: var(--success-color);
+}
+
+.ai-history {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.decisions,
+.trades {
+    max-height: 420px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.decision-item,
+.trade-item {
+    background: var(--bg-hover);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+}
+
+.decision-header,
+.trade-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.decision-signal {
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.decision-signal.buy {
+    background: rgba(52, 168, 83, 0.15);
+    color: var(--success-color);
+}
+
+.decision-signal.sell {
+    background: rgba(234, 67, 53, 0.15);
+    color: var(--danger-color);
+}
+
+.decision-signal.hold {
+    background: rgba(251, 188, 4, 0.15);
+    color: var(--warning-color);
+}
+
+.decision-confidence {
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.decision-body p {
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 12px;
+    white-space: pre-line;
+}
+
+.decision-meta {
+    display: flex;
+    gap: 15px;
+    font-size: 0.85em;
+    color: var(--text-secondary);
+}
+
+.trade-body {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
+
+.trade-side {
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.trade-side.long,
+.trade-side.buy {
+    background: rgba(52, 168, 83, 0.2);
+    color: var(--success-color);
+}
+
+.trade-side.short,
+.trade-side.sell {
+    background: rgba(234, 67, 53, 0.2);
+    color: var(--danger-color);
+}
+
+.ai-history-item {
+    background: var(--bg-dark);
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    font-size: 0.85em;
+    border-left: 3px solid var(--primary-color);
+}
+
+/* 交易记录表格 */
+.trades-table {
+    overflow-x: auto;
+    max-height: 400px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+thead {
+    position: sticky;
+    top: 0;
+    background: var(--bg-hover);
+    z-index: 10;
+}
+
+th {
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.9em;
+    border-bottom: 2px solid var(--border-color);
+}
+
+td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.9em;
+}
+
+tbody tr:hover {
+    background: var(--bg-hover);
+}
+
+.no-data {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 30px !important;
+}
+
+/* 信号统计 */
+.stats-section {
+    margin-bottom: 30px;
+}
+
+.stats-charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.mini-chart {
+    height: 300px;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-dark);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-color);
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+    .bottom-section {
+        grid-template-columns: 1fr;
+    }
+    
+    .stats-charts {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .top-cards {
+        grid-template-columns: 1fr;
+    }
+    
+    .header {
+        flex-direction: column;
+        gap: 15px;
+    }
+}
