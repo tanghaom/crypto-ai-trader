@@ -2468,12 +2468,23 @@ def execute_trade(symbol, signal_data, price_data, config):
                 print(f"[{config['display']}] 🔒 非高信心反转信号，保持现有{current_side}仓")
                 return
 
-            # 检查最近信号历史，避免频繁反转
-            if len(signal_history[symbol]) >= 2:
-                last_signals = [s['signal'] for s in signal_history[symbol][-2:]]
-                if signal_data['signal'] in last_signals:
-                    print(f"[{config['display']}] 🔒 近期已出现{signal_data['signal']}信号，避免频繁反转")
-                    return
+            # 检查最近实际执行的交易历史，避免频繁反转
+            # 注意：这里检查的是实际执行的交易，而不是所有信号（包括未执行的）
+            trade_history = web_data['symbols'][symbol].get('trade_history', [])
+            if len(trade_history) >= 1:
+                # 获取最近一次实际执行的交易
+                last_trade = trade_history[-1]
+                last_trade_side = last_trade.get('side')  # 'long' 或 'short'
+                
+                # 如果最近一次交易就是要反转到的方向，检查时间间隔
+                if last_trade_side == new_side:
+                    last_trade_time = datetime.strptime(last_trade['timestamp'], '%Y-%m-%d %H:%M:%S')
+                    time_diff = (datetime.now() - last_trade_time).total_seconds() / 60  # 转为分钟
+                    
+                    # 如果在30分钟内已经反转过到这个方向，则跳过（避免来回频繁反转）
+                    if time_diff < 30:
+                        print(f"[{config['display']}] 🔒 {time_diff:.1f}分钟前已反转至{new_side}仓，避免频繁反转")
+                        return
 
     print(f"[{config['display']}] 交易信号: {signal_data.get('signal')}")
     print(f"[{config['display']}] 信心程度: {signal_data.get('confidence')}")
