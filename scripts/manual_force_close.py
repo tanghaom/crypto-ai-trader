@@ -2,9 +2,9 @@
 # 临时强制平仓脚本：用于在主程序运行期间手动关闭指定交易对的持仓
 
 import argparse
+import sys
 from datetime import datetime
 from pathlib import Path
-import sys
 
 # 确保可以从项目根目录导入 deepseekok2
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -12,18 +12,16 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from deepseekok2 import (
-    MODEL_CONTEXTS,
     DEFAULT_MODEL_KEY,
+    MODEL_CONTEXTS,
     activate_context,
-    get_current_position,
     contracts_to_base,
+    get_current_position,
 )
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="强制使用 reduceOnly 平仓指定交易对的现有持仓。"
-    )
+    parser = argparse.ArgumentParser(description="强制使用 reduceOnly 平仓指定交易对的现有持仓。")
     parser.add_argument(
         "--model",
         default=DEFAULT_MODEL_KEY,
@@ -85,8 +83,7 @@ def main() -> int:
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log(
-            f"[{timestamp}] ⚙️ 准备平{side or '未知'}仓 {size_contracts:.6f} 张"
-            f"（≈ {base_qty:.6f} 基础资产），订单方向：{order_side.upper()}，使用 reduceOnly。",
+            f"[{timestamp}] ⚙️ 准备平{side or '未知'}仓 {size_contracts:.6f} 张" f"（≈ {base_qty:.6f} 基础资产），订单方向：{order_side.upper()}，使用 reduceOnly。",
             args.quiet,
         )
 
