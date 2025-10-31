@@ -3,20 +3,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import math
-import os
-import sqlite3
 import threading
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Dict, List, Optional
+from datetime import datetime
+from typing import Dict, Optional
 
 import ccxt
-import pandas as pd
 
 from ai_analysis import analyze_with_llm
 from config.settings import (
@@ -31,12 +26,23 @@ from config.settings import (
     MODEL_METADATA,
     TRADE_CONFIGS,
 )
+from history_store import HistoryStore
 from market_utils import (
+    adjust_contract_quantity,
+    base_to_contracts,
+    contracts_to_base,
     get_current_position,
+    get_symbol_contract_specs,
+    get_symbol_min_amount,
     get_symbol_ohlcv_enhanced,
 )
-from prompt_builder import format_currency
 from model_context import ModelContext
+from prompt_builder import format_currency
+from utils import (
+    safe_float,
+    sleep_interruptible,
+    wait_for_next_period,
+)
 
 # ==================== 多模型上下文管理 ====================
 
@@ -210,171 +216,6 @@ def ensure_symbol_state(symbol: str) -> None:
                 "profit_curve": [],
                 "last_update": None,
             }
-
-
-def clamp_value(value, min_val, max_val):
-    """限制值在范围内"""
-    return max(min_val, min(value, max_val))
-
-
-def round_to_step(value, step):
-    """四舍五入到指定步长"""
-    return round(value / step) * step
-
-
-def get_symbol_market(symbol: str) -> Dict:
-    ctx = get_active_context()
-    market = ctx.markets.get(symbol)
-    if not market:
-        try:
-            ctx.exchange.load_markets()
-            market = ctx.exchange.market(symbol)
-            ctx.markets[symbol] = market
-        except Exception as e:
-            print(f"⚠️ {ctx.display} 无法获取 {symbol} 市场信息: {e}")
-            market = {}
-    return market or {}
-
-
-def get_symbol_contract_specs(symbol: str) -> Dict[str, float]:
-    """返回合约相关规格（contractSize、最小张数等）"""
-    market = get_symbol_market(symbol)
-    contract_size = market.get("contractSize") or market.get("contract_size") or 1
-    try:
-        contract_size = float(contract_size)
-    except (TypeError, ValueError):
-        contract_size = 1.0
-
-    limits = (market.get("limits") or {}).get("amount") or {}
-    market_min_contracts = limits.get("min")
-    try:
-        market_min_contracts = float(market_min_contracts) if market_min_contracts is not None else None
-    except (TypeError, ValueError):
-        market_min_contracts = None
-
-    config = get_symbol_config(symbol)
-    config_min_base = float(config.get("amount", 0) or 0)
-    config_min_contracts = (config_min_base / contract_size) if contract_size else config_min_base
-
-    candidates = [value for value in (market_min_contracts, config_min_contracts) if value and value > 0]
-    min_contracts = max(candidates) if candidates else 0.0
-    min_base = min_contracts * contract_size if contract_size else config_min_base
-
-    # 推断数量精度与步进
-    precision = (market.get("precision") or {}).get("amount") if market else None
-    step = None
-    # 1) 优先使用交易所直接给出的步进字段（更可靠）
-    if market:
-        candidate = market.get("amountIncrement") or market.get("lot")
-        try:
-            if candidate is not None:
-                step = float(candidate)
-        except (TypeError, ValueError):
-            step = None
-
-    # 2) 若无显式步进，则根据 precision 判断
-    #    - 若是整数(或近似整数) → 表示小数位数，step = 10**(-precision)
-    #    - 若是 0-1 的浮点 → 本身就是步进值，例如 0.01、0.1
-    if step is None and precision is not None:
-        try:
-            if isinstance(precision, int):
-                step = 10 ** (-precision)
-            elif isinstance(precision, float):
-                if 0 < precision < 1:
-                    step = precision
-                elif precision >= 0 and abs(precision - round(precision)) < 1e-9:
-                    step = 10 ** (-int(round(precision)))
-            elif isinstance(precision, str):
-                # 尝试作为整数位数；若失败再作为浮点步进
-                if precision.isdigit():
-                    step = 10 ** (-int(precision))
-                else:
-                    p = float(precision)
-                    if 0 < p < 1:
-                        step = p
-        except Exception:
-            step = None
-
-    return {
-        "contract_size": contract_size if contract_size else 1.0,
-        "min_contracts": min_contracts,
-        "min_base": min_base if min_base else config_min_base,
-        "precision": precision,
-        "step": step,
-    }
-
-
-def get_symbol_min_contracts(symbol: str) -> float:
-    """最小下单张数"""
-    specs = get_symbol_contract_specs(symbol)
-    return specs["min_contracts"]
-
-
-def get_symbol_min_amount(symbol: str) -> float:
-    specs = get_symbol_contract_specs(symbol)
-    config_min = get_symbol_config(symbol).get("amount", 0)
-    min_base = specs["min_base"] if specs["min_base"] else config_min
-    return max(min_base, config_min)
-
-
-def get_symbol_amount_precision(symbol: str):
-    specs = get_symbol_contract_specs(symbol)
-    return specs["precision"], specs["step"]
-
-
-def base_to_contracts(symbol: str, base_quantity: float) -> float:
-    """基础量 -> 合约张数"""
-    specs = get_symbol_contract_specs(symbol)
-    contract_size = specs["contract_size"] if specs else 1.0
-    if not contract_size:
-        contract_size = 1.0
-    return base_quantity / contract_size
-
-
-def contracts_to_base(symbol: str, contracts: float) -> float:
-    """合约张数 -> 基础数量"""
-    specs = get_symbol_contract_specs(symbol)
-    contract_size = specs["contract_size"] if specs else 1.0
-    if not contract_size:
-        contract_size = 1.0
-    return contracts * contract_size
-
-
-def adjust_quantity_to_precision(symbol: str, quantity: float, round_up: bool = False) -> float:
-    """在基础数量层面调整到合约精度"""
-    contracts = base_to_contracts(symbol, quantity)
-    contracts = adjust_contract_quantity(symbol, contracts, round_up=round_up)
-    return contracts_to_base(symbol, contracts)
-
-
-def adjust_contract_quantity(symbol: str, contracts: float, round_up: bool = False) -> float:
-    ctx = get_active_context()
-    precision, step = get_symbol_amount_precision(symbol)
-    adjusted = contracts
-    if round_up and step:
-        adjusted = math.ceil(adjusted / step) * step
-    elif round_up:
-        adjusted = math.ceil(adjusted)
-    try:
-        adjusted = float(ctx.exchange.amount_to_precision(symbol, adjusted))
-    except Exception:
-        if precision is not None:
-            factor = 10**precision
-            if round_up:
-                adjusted = math.ceil(adjusted * factor) / factor
-            else:
-                adjusted = math.floor(adjusted * factor) / factor
-    return adjusted
-
-
-def safe_float(value, default=0.0):
-    """安全地将值转换为浮点数，失败时返回默认值"""
-    if value is None:
-        return default
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
 
 
 def evaluate_signal_result(signal: str, price_change_pct: float) -> bool:
@@ -578,193 +419,8 @@ def record_overview_point(timestamp: Optional[str] = None):
 # ==================== 历史数据存储 ====================
 
 
-class HistoryStore:
-    """负责持久化余额历史并提供导出/压缩能力"""
-
-    def __init__(self, db_path: Path):
-        self.db_path = db_path
-        self._lock = threading.Lock()
-        self._init_db()
-        self.last_archive_date = self._load_last_archive_date()
-
-    # ---- 基础设施 ----
-    def _get_conn(self):
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
-
-    def _init_db(self):
-        with self._get_conn() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS balance_history (
-                    model TEXT NOT NULL,
-                    timestamp TEXT NOT NULL,
-                    total_equity REAL,
-                    available_balance REAL,
-                    unrealized_pnl REAL,
-                    currency TEXT,
-                    PRIMARY KEY (model, timestamp)
-                )
-            """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS meta (
-                    key TEXT PRIMARY KEY,
-                    value TEXT
-                )
-            """
-            )
-
-    def _load_last_archive_date(self):
-        with self._get_conn() as conn:
-            row = conn.execute("SELECT value FROM meta WHERE key = 'last_archive_date'").fetchone()
-            if row and row["value"]:
-                return datetime.strptime(row["value"], "%Y-%m-%d").date()
-        return None
-
-    def _update_last_archive_date(self, day):
-        with self._get_conn() as conn:
-            conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('last_archive_date', ?)", (day.strftime("%Y-%m-%d"),))
-
-    # ---- 写入与读取 ----
-    def append_balance(self, model: str, snapshot: Dict[str, float]):
-        with self._lock, self._get_conn() as conn:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO balance_history(model, timestamp, total_equity, available_balance, unrealized_pnl, currency)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    model,
-                    snapshot["timestamp"],
-                    snapshot.get("total_equity"),
-                    snapshot.get("available_balance"),
-                    snapshot.get("unrealized_pnl"),
-                    snapshot.get("currency", "USDT"),
-                ),
-            )
-
-    def load_recent_balance(self, model: str, limit: int = 500) -> List[Dict[str, float]]:
-        with self._get_conn() as conn:
-            rows = conn.execute(
-                """
-                SELECT timestamp, total_equity, available_balance, unrealized_pnl, currency
-                FROM balance_history
-                WHERE model = ?
-                ORDER BY timestamp DESC
-                LIMIT ?
-                """,
-                (model, limit),
-            ).fetchall()
-        data = [
-            {
-                "timestamp": row["timestamp"],
-                "total_equity": row["total_equity"],
-                "available_balance": row["available_balance"],
-                "unrealized_pnl": row["unrealized_pnl"],
-                "currency": row["currency"],
-            }
-            for row in reversed(rows)
-        ]
-        return data
-
-    def fetch_balance_range(self, model: str, start_ts: str, end_ts: str) -> List[Dict[str, float]]:
-        with self._get_conn() as conn:
-            rows = conn.execute(
-                """
-                SELECT timestamp, total_equity, available_balance, unrealized_pnl, currency
-                FROM balance_history
-                WHERE model = ? AND timestamp BETWEEN ? AND ?
-                ORDER BY timestamp ASC
-                """,
-                (model, start_ts, end_ts),
-            ).fetchall()
-        return [
-            {
-                "timestamp": row["timestamp"],
-                "total_equity": row["total_equity"],
-                "available_balance": row["available_balance"],
-                "unrealized_pnl": row["unrealized_pnl"],
-                "currency": row["currency"],
-            }
-            for row in rows
-        ]
-
-    # ---- 存档与导出 ----
-    def compress_day(self, day):
-        """将指定日期的数据导出为 Excel"""
-        day_str = day.strftime("%Y-%m-%d")
-        start = f"{day_str} 00:00:00"
-        end = f"{day_str} 23:59:59"
-
-        with self._get_conn() as conn:
-            rows = conn.execute(
-                """
-                SELECT model, timestamp, total_equity, available_balance, unrealized_pnl, currency
-                FROM balance_history
-                WHERE timestamp BETWEEN ? AND ?
-                ORDER BY model, timestamp
-                """,
-                (start, end),
-            ).fetchall()
-
-        if not rows:
-            return False
-
-        df = pd.DataFrame([dict(row) for row in rows])
-        output_path = ARCHIVE_DIR / f"balances-{day.strftime('%Y%m%d')}.xlsx"
-        df.to_excel(output_path, index=False)
-        self._update_last_archive_date(day)
-        self.last_archive_date = day
-        return True
-
-    def compress_if_needed(self, current_dt: datetime):
-        """每日零点后压缩前一日数据"""
-        target_day = current_dt.date() - timedelta(days=1)
-        if target_day <= datetime(1970, 1, 1).date():
-            return
-        if self.last_archive_date and target_day <= self.last_archive_date:
-            return
-        self.compress_day(target_day)
-
-    def export_range_to_excel(self, start_date: str, end_date: str, output_path: Path, models: Optional[List[str]] = None):
-        models = models or MODEL_ORDER
-        with self._get_conn() as conn:
-            placeholder = ",".join("?" for _ in models)
-            query = f"""
-                SELECT model, timestamp, total_equity, available_balance, unrealized_pnl, currency
-                FROM balance_history
-                WHERE model IN ({placeholder}) AND timestamp BETWEEN ? AND ?
-                ORDER BY timestamp ASC
-            """
-            rows = conn.execute(query, (*models, start_date, end_date)).fetchall()
-
-        if not rows:
-            raise ValueError("选定时间范围内没有历史数据可导出。")
-
-        df = pd.DataFrame([dict(row) for row in rows])
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        df.to_excel(output_path, index=False)
-
-    def get_latest_before(self, model: str, timestamp: str):
-        with self._get_conn() as conn:
-            row = conn.execute(
-                """
-                SELECT timestamp, total_equity, available_balance, unrealized_pnl
-                FROM balance_history
-                WHERE model = ? AND timestamp <= ?
-                ORDER BY timestamp DESC
-                LIMIT 1
-                """,
-                (model, timestamp),
-            ).fetchone()
-        return dict(row) if row else None
-
-
 # 历史数据存储
-history_store = HistoryStore(DB_PATH)
+history_store = HistoryStore(DB_PATH, ARCHIVE_DIR)
 
 for key in MODEL_ORDER:
     ctx = MODEL_CONTEXTS[key]
@@ -1491,40 +1147,6 @@ def check_stop_loss_take_profit(symbol, current_price, config):
     }
 
 
-def wait_for_next_period():
-    """等待到下一个5分钟整点"""
-    now = datetime.now()
-    current_minute = now.minute
-    current_second = now.second
-
-    # 计算下一个整点时间（每5分钟：00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55分钟）
-    INTERVAL_MINUTES = int(os.getenv("TRADE_INTERVAL_MINUTES", "5"))
-    if INTERVAL_MINUTES <= 0:
-        INTERVAL_MINUTES = 5
-    next_period_minute = ((current_minute // INTERVAL_MINUTES) + 1) * INTERVAL_MINUTES
-    if next_period_minute == 60:
-        next_period_minute = 0
-
-    # 计算需要等待的总秒数
-    if next_period_minute > current_minute:
-        minutes_to_wait = next_period_minute - current_minute
-    else:
-        minutes_to_wait = 60 - current_minute + next_period_minute
-
-    seconds_to_wait = minutes_to_wait * 60 - current_second
-
-    # 显示友好的等待时间
-    display_minutes = minutes_to_wait - 1 if current_second > 0 else minutes_to_wait
-    display_seconds = 60 - current_second if current_second > 0 else 0
-
-    if display_minutes > 0:
-        print(f"🕒 等待 {display_minutes} 分 {display_seconds} 秒到整点...")
-    else:
-        print(f"🕒 等待 {display_seconds} 秒到整点...")
-
-    return seconds_to_wait
-
-
 def run_symbol_cycle(symbol, config):
     """单个交易对的完整执行周期"""
     get_active_context()
@@ -1700,7 +1322,7 @@ def main():
         wait_seconds = wait_for_next_period()
         if wait_seconds > 0:
             # 可中断等待到整点
-            sleep_interruptible(wait_seconds)
+            sleep_interruptible(wait_seconds, STOP_EVENT)
             if STOP_EVENT.is_set():
                 print("🛑 停止信号触发于等待阶段，退出交易循环。")
                 break
@@ -1722,27 +1344,13 @@ def main():
         record_overview_point(cycle_timestamp)
         history_store.compress_if_needed(datetime.now())
         # 末尾休眠可被停止信号打断
-        sleep_interruptible(60)
+        sleep_interruptible(60, STOP_EVENT)
 
 
 def get_active_context() -> ModelContext:
     if ACTIVE_CONTEXT is None:
         raise RuntimeError("当前没有激活的模型上下文。")
     return ACTIVE_CONTEXT
-
-
-def sleep_interruptible(total_seconds: int) -> None:
-    """
-    按秒睡眠并检查 STOP_EVENT，收到停止信号时提前返回。
-    """
-    try:
-        total_seconds = int(total_seconds)
-    except Exception:
-        total_seconds = 0
-    for _ in range(max(0, total_seconds)):
-        if STOP_EVENT.is_set():
-            break
-        time.sleep(1)
 
 
 if __name__ == "__main__":

@@ -5,11 +5,14 @@
 """
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 
 import pandas as pd
 import requests
+
+# ==================== 懒加载核心对象 ====================
 
 
 def _get_exchange():
@@ -360,3 +363,182 @@ def get_current_position(symbol: Optional[str] = None) -> Optional[Dict]:
 
         traceback.print_exc()
         return None
+
+
+# ==================== 合约规格与数量精度 ====================
+
+
+def get_symbol_market(symbol: str) -> Dict:
+    """返回交易对的市场信息（优先复用当前上下文的缓存）。"""
+    # 优先尝试通过上下文缓存，失败则直接从交易所获取
+    try:
+        from deepseekok2 import get_active_context  # 懒加载，避免循环依赖
+
+        ctx = get_active_context()
+        market = ctx.markets.get(symbol)
+        if not market:
+            ex = _get_exchange()
+            if ex:
+                try:
+                    ex.load_markets()
+                    market = ex.market(symbol)
+                    ctx.markets[symbol] = market
+                except Exception as e:
+                    print(f"⚠️ 无法获取 {symbol} 市场信息: {e}")
+                    market = {}
+        return market or {}
+    except Exception:
+        # 回退：绕过上下文，直接读取交易所
+        ex = _get_exchange()
+        if not ex:
+            return {}
+        try:
+            ex.load_markets()
+            return ex.market(symbol) or {}
+        except Exception:
+            return {}
+
+
+def get_symbol_contract_specs(symbol: str) -> Dict[str, float]:
+    """返回合约相关规格（contractSize、最小张数、数量精度/步进等）。"""
+    market = get_symbol_market(symbol)
+
+    # contractSize
+    contract_size = market.get("contractSize") or market.get("contract_size") or 1
+    try:
+        contract_size = float(contract_size)
+    except (TypeError, ValueError):
+        contract_size = 1.0
+
+    # 最小张数（综合交易所 limits 与配置中的最小基础数量）
+    limits = (market.get("limits") or {}).get("amount") or {}
+    market_min_contracts = limits.get("min")
+    try:
+        market_min_contracts = float(market_min_contracts) if market_min_contracts is not None else None
+    except (TypeError, ValueError):
+        market_min_contracts = None
+
+    config = _get_symbol_config(symbol)
+    config_min_base = float(config.get("amount", 0) or 0)
+    config_min_contracts = (config_min_base / contract_size) if contract_size else config_min_base
+
+    candidates = [value for value in (market_min_contracts, config_min_contracts) if value and value > 0]
+    min_contracts = max(candidates) if candidates else 0.0
+    min_base = min_contracts * contract_size if contract_size else config_min_base
+
+    # 推断数量精度与步进
+    precision = (market.get("precision") or {}).get("amount") if market else None
+    step = None
+    # 1) 优先使用交易所显式步进字段
+    if market:
+        candidate = market.get("amountIncrement") or market.get("lot")
+        try:
+            if candidate is not None:
+                step = float(candidate)
+        except (TypeError, ValueError):
+            step = None
+
+    # 2) 若无显式步进，根据 precision 判断
+    if step is None and precision is not None:
+        try:
+            if isinstance(precision, int):
+                step = 10 ** (-precision)
+            elif isinstance(precision, float):
+                if 0 < precision < 1:
+                    step = precision
+                elif precision >= 0 and abs(precision - round(precision)) < 1e-9:
+                    step = 10 ** (-int(round(precision)))
+            elif isinstance(precision, str):
+                if precision.isdigit():
+                    step = 10 ** (-int(precision))
+                else:
+                    p = float(precision)
+                    if 0 < p < 1:
+                        step = p
+        except Exception:
+            step = None
+
+    return {
+        "contract_size": contract_size if contract_size else 1.0,
+        "min_contracts": min_contracts,
+        "min_base": min_base if min_base else config_min_base,
+        "precision": precision,
+        "step": step,
+    }
+
+
+def get_symbol_min_contracts(symbol: str) -> float:
+    """返回交易所允许的最小下单张数。"""
+    specs = get_symbol_contract_specs(symbol)
+    return specs.get("min_contracts", 0.0)
+
+
+def get_symbol_min_amount(symbol: str) -> float:
+    """返回在基础数量维度的最小下单量（USDT 面值合约为标的基础量）。"""
+    specs = get_symbol_contract_specs(symbol)
+    config_min = _get_symbol_config(symbol).get("amount", 0)  # 配置侧兜底
+    min_base = specs.get("min_base") if specs else config_min
+    return max(float(min_base or 0), float(config_min or 0))
+
+
+def get_symbol_amount_precision(symbol: str):
+    """返回数量精度与步进（precision, step）。"""
+    specs = get_symbol_contract_specs(symbol)
+    return specs.get("precision"), specs.get("step")
+
+
+def base_to_contracts(symbol: str, base_quantity: float) -> float:
+    """基础数量 -> 合约张数。"""
+    specs = get_symbol_contract_specs(symbol)
+    contract_size = specs.get("contract_size", 1.0) if specs else 1.0
+    if not contract_size:
+        contract_size = 1.0
+    return float(base_quantity) / float(contract_size)
+
+
+def contracts_to_base(symbol: str, contracts: float) -> float:
+    """合约张数 -> 基础数量。"""
+    specs = get_symbol_contract_specs(symbol)
+    contract_size = specs.get("contract_size", 1.0) if specs else 1.0
+    if not contract_size:
+        contract_size = 1.0
+    return float(contracts) * float(contract_size)
+
+
+def adjust_contract_quantity(symbol: str, contracts: float, round_up: bool = False) -> float:
+    """按交易所精度规范调整张数（支持向上取整）。"""
+    precision, step = get_symbol_amount_precision(symbol)
+    adjusted = float(contracts)
+    if round_up and step:
+        adjusted = math.ceil(adjusted / float(step)) * float(step)
+    elif round_up:
+        adjusted = math.ceil(adjusted)
+
+    # 优先使用交易所的 amount_to_precision
+    ex = _get_exchange()
+    if ex is not None:
+        try:
+            adjusted = float(ex.amount_to_precision(symbol, adjusted))
+            return adjusted
+        except Exception:
+            pass
+
+    # 回退：根据 precision 做十进位调整（仅当 precision 表示小数位数时）
+    try:
+        if precision is not None and (isinstance(precision, int) or (isinstance(precision, float) and abs(precision - round(precision)) < 1e-9)):
+            p = int(round(precision))
+            factor = 10**p
+            if round_up:
+                adjusted = math.ceil(adjusted * factor) / factor
+            else:
+                adjusted = math.floor(adjusted * factor) / factor
+    except Exception:
+        pass
+    return adjusted
+
+
+def adjust_quantity_to_precision(symbol: str, quantity: float, round_up: bool = False) -> float:
+    """在基础数量维度将数量调整到合约精度。"""
+    contracts = base_to_contracts(symbol, quantity)
+    contracts = adjust_contract_quantity(symbol, contracts, round_up=round_up)
+    return contracts_to_base(symbol, contracts)
