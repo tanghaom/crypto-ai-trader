@@ -11,6 +11,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # 导入主程序
 import deepseekok2
+import web_data
 
 # 明确指定模板和静态文件路径
 app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"), static_folder=os.path.join(BASE_DIR, "static"))
@@ -24,7 +25,7 @@ thread_lock = threading.Lock()
 
 def get_snapshot(model_key: str):
     try:
-        return deepseekok2.get_model_snapshot(model_key)
+        return web_data.get_model_snapshot(model_key)
     except KeyError:
         abort(404, description=f"模型 {model_key} 未配置")
 
@@ -226,7 +227,7 @@ def get_profit_curve():
     model_key = resolve_model_key()
     range_key = request.args.get("range", "7d")
     try:
-        start_ts, end_ts = deepseekok2.resolve_time_range(range_key)
+        start_ts, end_ts = web_data.resolve_time_range(range_key)
         data = deepseekok2.history_store.fetch_balance_range(model_key, start_ts, end_ts)
         if not data:
             snapshot = get_snapshot(model_key)
@@ -240,25 +241,9 @@ def get_profit_curve():
 def get_ai_model_info():
     """获取AI模型信息和连接状态"""
     try:
-        return jsonify(deepseekok2.get_models_status())
+        return jsonify(web_data.get_models_status())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/test_ai")
-def test_ai_connection():
-    """手动测试AI连接"""
-    model_key = request.args.get("model")
-    try:
-        result = deepseekok2.test_ai_connection(model_key) if model_key else deepseekok2.test_ai_connection()
-        statuses = deepseekok2.get_models_status()
-        if isinstance(result, dict):
-            success = all(result.values())
-        else:
-            success = bool(result)
-        return jsonify({"success": success, "detail": result, "statuses": statuses})
-    except Exception as e:
-        return jsonify({"error": str(e), "success": False}), 500
 
 
 @app.route("/api/overview")
@@ -266,8 +251,8 @@ def get_overview_data():
     """首页总览数据（含多模型资金曲线）"""
     range_key = request.args.get("range", "1d")
     try:
-        payload = deepseekok2.get_overview_payload(range_key)
-        payload["models_metadata"] = deepseekok2.get_model_metadata()
+        payload = web_data.get_overview_payload(range_key)
+        payload["models_metadata"] = web_data.get_model_metadata()
         return jsonify(payload)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -277,7 +262,7 @@ def get_overview_data():
 def list_models():
     """返回模型列表与基础信息"""
     try:
-        return jsonify({"default": deepseekok2.DEFAULT_MODEL_KEY, "models": deepseekok2.get_model_metadata()})
+        return jsonify({"default": deepseekok2.DEFAULT_MODEL_KEY, "models": web_data.get_model_metadata()})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
