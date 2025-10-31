@@ -11,11 +11,24 @@ from typing import Dict
 
 # =============== 路径相关（使用 pathlib） ===============
 BASE_DIR: Path = Path(__file__).resolve().parents[1]
-DATA_DIR: Path = BASE_DIR / "data"
-ARCHIVE_DIR: Path = BASE_DIR / "archives"
+# 识别 Vercel 无状态/只读文件系统环境
+IS_VERCEL: bool = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV"))
+# 可通过 APP_DATA_DIR 覆盖数据目录；在 Vercel 下默认使用 /tmp（可写但不持久）
+_APP_DATA_DIR = os.getenv("APP_DATA_DIR")
+if _APP_DATA_DIR:
+    DATA_DIR: Path = Path(_APP_DATA_DIR)
+    ARCHIVE_DIR: Path = DATA_DIR / "archives"
+else:
+    if IS_VERCEL:
+        TMP_BASE = Path(os.getenv("TMPDIR", "/tmp")) / "alpha-okx-deepseek-qwen"
+        DATA_DIR: Path = TMP_BASE / "data"
+        ARCHIVE_DIR: Path = TMP_BASE / "archives"
+    else:
+        DATA_DIR: Path = BASE_DIR / "data"
+        ARCHIVE_DIR: Path = BASE_DIR / "archives"
 DB_PATH: Path = DATA_DIR / "history.db"
 
-# 确保目录存在（在导入时即可安全使用）
+# 确保目录存在（在 Vercel 只会创建到 /tmp，属于临时目录，随请求生命周期清空）
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -80,74 +93,6 @@ TRADE_CONFIGS: Dict[str, Dict] = {
         "data_points": 96,
         "analysis_periods": {"short_term": 20, "medium_term": 50, "long_term": 96},
     },
-    # 'OKB/USDT:USDT': {
-    #     'display': 'OKB-USDT',
-    #     'amount': 1,
-    #     'leverage': 3,
-    #     'leverage_min': 2,
-    #     'leverage_max': 5,
-    #     'leverage_default': 3,
-    #     'leverage_step': 1,
-    #     'timeframe': '5m',
-    #     'test_mode': False,
-    #     'data_points': 96,
-    #     'analysis_periods': {
-    #         'short_term': 20,
-    #         'medium_term': 50,
-    #         'long_term': 96
-    #     }
-    # },
-    # 'SOL/USDT:USDT': {
-    #     'display': 'SOL-USDT',
-    #     'amount': 0.1,
-    #     'leverage': 3,
-    #     'leverage_min': 2,
-    #     'leverage_max': 5,
-    #     'leverage_default': 3,
-    #     'leverage_step': 1,
-    #     'timeframe': '5m',
-    #     'test_mode': False,
-    #     'data_points': 96,
-    #     'analysis_periods': {
-    #         'short_term': 20,
-    #         'medium_term': 50,
-    #         'long_term': 96
-    #     }
-    # },
-    # 'DOGE/USDT:USDT': {
-    #     'display': 'DOGE-USDT',
-    #     'amount': 10,
-    #     'leverage': 3,
-    #     'leverage_min': 2,
-    #     'leverage_max': 5,
-    #     'leverage_default': 3,
-    #     'leverage_step': 1,
-    #     'timeframe': '5m',
-    #     'test_mode': False,
-    #     'data_points': 96,
-    #     'analysis_periods': {
-    #         'short_term': 20,
-    #         'medium_term': 50,
-    #         'long_term': 96
-    #     }
-    # },
-    # 'XRP/USDT:USDT': {
-    #     'display': 'XRP-USDT',
-    #     'amount': 10,
-    #     'leverage': 3,
-    #     'leverage_min': 2,
-    #     'leverage_max': 5,
-    #     'leverage_default': 3,
-    #     'leverage_step': 1,
-    #     'timeframe': '5m',
-    #     'test_mode': False,
-    #     'data_points': 96,
-    #     'analysis_periods': {
-    #         'short_term': 20,
-    #         'medium_term': 50,
-    #         'long_term': 96
-    #     }
-    # }
 }
 
 # 单交易对兼容（保留旧接口需求）
