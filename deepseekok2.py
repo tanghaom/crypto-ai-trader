@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import copy
 import json
 import math
@@ -16,8 +21,20 @@ from typing import Dict, List, Optional
 import ccxt
 import pandas as pd
 import requests
-from dotenv import load_dotenv
 from openai import OpenAI
+
+from config.settings import (
+    ARCHIVE_DIR,
+    CONFIDENCE_RATIOS,
+    DB_PATH,
+    DEFAULT_TRADE_SYMBOL,
+    ENABLED_MODELS,
+    HOLD_TOLERANCE,
+    MARGIN_SAFETY_BUFFER,
+    MAX_TOTAL_MARGIN_RATIO,
+    MODEL_METADATA,
+    TRADE_CONFIGS,
+)
 
 # 导入提示词构建模块
 from prompt_builder import (
@@ -25,21 +42,6 @@ from prompt_builder import (
     build_system_prompt,
     format_currency,
 )
-
-load_dotenv()
-
-# ==================== 常量定义 ====================
-HOLD_TOLERANCE = 0.5  # HOLD 信号允许的价差百分比
-
-# 仓位比例配置（根据信心等级分配可用保证金的百分比）
-CONFIDENCE_RATIOS = {"HIGH": 0.3, "MEDIUM": 0.2, "LOW": 0.05}  # 高信心使用30%的可用保证金（小资金保守策略）  # 中信心使用20%  # 低信心使用5%   低信心不执行
-
-# 保证金管理参数（风险管理配置，非OKX官方限制）
-# 建议值：
-#   - MAX_TOTAL_MARGIN_RATIO: 0.75-0.90（保守-激进），控制总风险敞口上限
-#   - MARGIN_SAFETY_BUFFER: 0.85-0.95（保守-激进），最后一道安全缓冲
-MAX_TOTAL_MARGIN_RATIO = 0.85  # 总保证金不超过权益的比例（应对OKX梯度保证金制度和市场波动）
-MARGIN_SAFETY_BUFFER = 0.90  # 安全缓冲比例（应对价格波动、手续费、OKX隐藏buffer）
 
 # ==================== 多模型上下文管理 ====================
 
@@ -225,113 +227,8 @@ def activate_context(ctx: ModelContext):
         ACTIVE_CONTEXT = prev_active_context
 
 
-# 多交易对配置 - 支持6个交易对同时运行
-TRADE_CONFIGS = {
-    # 'BTC/USDT:USDT': {
-    #     'display': 'BTC-USDT',
-    #     'amount': 0.0001,  # 最小交易量
-    #     'leverage': 2,  # 默认杠杆（测试用 2 倍）
-    #     'leverage_min': 1,
-    #     'leverage_max': 3,
-    #     'leverage_default': 2,
-    #     'leverage_step': 1,
-    #     'timeframe': '5m',
-    #     'test_mode': False,  # 初始测试模式
-    #     'data_points': 96,
-    #     'analysis_periods': {
-    #         'short_term': 20,
-    #         'medium_term': 50,
-    #         'long_term': 96
-    #     }
-    # },
-    "ETH/USDT:USDT": {
-        "display": "ETH-USDT",
-        "amount": 0.001,
-        "leverage": 2,
-        "leverage_min": 1,
-        "leverage_max": 3,
-        "leverage_default": 2,
-        "leverage_step": 1,
-        "timeframe": "5m",
-        "test_mode": False,
-        "enable_add_position": False,  # 🆕 加仓功能开关：True=启用，False=禁用（同方向信号时保持现状）
-        "data_points": 96,
-        "analysis_periods": {"short_term": 20, "medium_term": 50, "long_term": 96},
-    },
-    # 以下币种已注释，只交易 BTC 和 ETH
-    # 'OKB/USDT:USDT': {
-    #     'display': 'OKB-USDT',
-    #     'amount': 1,
-    #     'leverage': 3,
-    #     'leverage_min': 2,
-    #     'leverage_max': 5,
-    #     'leverage_default': 3,
-    #     'leverage_step': 1,
-    #     'timeframe': '5m',
-    #     'test_mode': False,
-    #     'data_points': 96,
-    #     'analysis_periods': {
-    #         'short_term': 20,
-    #         'medium_term': 50,
-    #         'long_term': 96
-    #     }
-    # },
-    # 'SOL/USDT:USDT': {
-    #     'display': 'SOL-USDT',
-    #     'amount': 0.1,
-    #     'leverage': 3,
-    #     'leverage_min': 2,
-    #     'leverage_max': 5,
-    #     'leverage_default': 3,
-    #     'leverage_step': 1,
-    #     'timeframe': '5m',
-    #     'test_mode': False,
-    #     'data_points': 96,
-    #     'analysis_periods': {
-    #         'short_term': 20,
-    #         'medium_term': 50,
-    #         'long_term': 96
-    #     }
-    # },
-    # 'DOGE/USDT:USDT': {
-    #     'display': 'DOGE-USDT',
-    #     'amount': 10,
-    #     'leverage': 3,
-    #     'leverage_min': 2,
-    #     'leverage_max': 5,
-    #     'leverage_default': 3,
-    #     'leverage_step': 1,
-    #     'timeframe': '5m',
-    #     'test_mode': False,
-    #     'data_points': 96,
-    #     'analysis_periods': {
-    #         'short_term': 20,
-    #         'medium_term': 50,
-    #         'long_term': 96
-    #     }
-    # },
-    # 'XRP/USDT:USDT': {
-    #     'display': 'XRP-USDT',
-    #     'amount': 10,
-    #     'leverage': 3,
-    #     'leverage_min': 2,
-    #     'leverage_max': 5,
-    #     'leverage_default': 3,
-    #     'leverage_step': 1,
-    #     'timeframe': '5m',
-    #     'test_mode': False,
-    #     'data_points': 96,
-    #     'analysis_periods': {
-    #         'short_term': 20,
-    #         'medium_term': 50,
-    #         'long_term': 96
-    #     }
-    # }
-}
-
-# 单交易对兼容模式（向后兼容）
-# TRADE_CONFIG = TRADE_CONFIGS['BTC/USDT:USDT']
-TRADE_CONFIG = TRADE_CONFIGS["ETH/USDT:USDT"]
+# 多交易对配置 - 移至 config.settings
+TRADE_CONFIG = TRADE_CONFIGS[DEFAULT_TRADE_SYMBOL]
 
 # 预置占位容器；实际数据由每个模型上下文维护
 price_history = defaultdict(list)
@@ -347,33 +244,32 @@ overview_state = {"series": [], "models": {}, "aggregate": {}}
 data_lock = threading.Lock()
 order_execution_lock = threading.Lock()
 
-# 数据持久化目录
-BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
-ARCHIVE_DIR = BASE_DIR / "archives"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / "history.db"
+# 交易机器人启停信号（线程安全）
+STOP_EVENT = threading.Event()
+
+
+def request_stop_trading_bot() -> None:
+    """
+    请求停止交易机器人（置位停止信号）。
+    """
+    STOP_EVENT.set()
+
+
+def clear_stop_signal() -> None:
+    """
+    清除停止信号，便于后续重新启动交易机器人。
+    """
+    STOP_EVENT.clear()
+
+
+def is_stop_requested() -> bool:
+    """
+    返回是否已请求停止。
+    """
+    return STOP_EVENT.is_set()
+
 
 # ==================== 模型上下文初始化 ====================
-
-MODEL_METADATA = {
-    "deepseek": {
-        "display": "DeepSeek 策略",
-        "provider": "deepseek",
-        "model": os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
-        "base_url": os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-    },
-    "qwen": {
-        "display": "Qwen 策略",
-        "provider": "qwen",
-        "model": os.getenv("QWEN_MODEL", "qwen-max"),
-        "base_url": os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
-    },
-}
-
-enabled_models_env = os.getenv("ENABLED_MODELS", "deepseek,qwen")
-ENABLED_MODELS = [m.strip().lower() for m in enabled_models_env.split(",") if m.strip()]
 
 MODEL_CONTEXTS: Dict[str, ModelContext] = {}
 for model_key in ENABLED_MODELS:
@@ -2860,14 +2756,21 @@ def run_all_symbols_parallel(model_display: str):
     with ThreadPoolExecutor(max_workers=len(TRADE_CONFIGS)) as executor:
         futures = []
         for symbol, config in TRADE_CONFIGS.items():
+            # 在提交任务阶段检查停止信号
+            if STOP_EVENT.is_set():
+                print(f"🛑 [{model_display}] 停止信号触发，终止任务提交。")
+                break
             future = executor.submit(run_symbol_cycle, symbol, config)
             futures.append((symbol, future))
 
             # 添加延迟避免API限频
             time.sleep(2)
 
-        # 等待所有任务完成
+        # 等待所有任务完成（或停止）
         for symbol, future in futures:
+            if STOP_EVENT.is_set():
+                print(f"🛑 [{model_display}] 停止信号触发，跳过剩余任务等待。")
+                break
             try:
                 future.result(timeout=60)  # 60秒超时
             except Exception as e:
@@ -2881,7 +2784,7 @@ def run_all_symbols_parallel(model_display: str):
 def main():
     """主入口：同时调度多模型、多交易对"""
     print("\n" + "=" * 70)
-    print("🤖 多交易对自动交易机器人启动")
+    print("🧠 多交易对自动交易机器人启动")
     print("=" * 70)
     print(f"启用模型: {', '.join([MODEL_CONTEXTS[key].display for key in MODEL_ORDER])}")
     print(f"交易对数量: {len(TRADE_CONFIGS)}")
@@ -2915,21 +2818,37 @@ def main():
     record_overview_point(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     while True:
+        # 在循环开头检查停止信号
+        if STOP_EVENT.is_set():
+            print("🛑 收到停止信号，退出交易循环。")
+            break
+
         wait_seconds = wait_for_next_period()
         if wait_seconds > 0:
-            time.sleep(wait_seconds)
+            # 可中断等待到整点
+            sleep_interruptible(wait_seconds)
+            if STOP_EVENT.is_set():
+                print("🛑 停止信号触发于等待阶段，退出交易循环。")
+                break
 
         cycle_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for model_key in MODEL_ORDER:
+            if STOP_EVENT.is_set():
+                print("🛑 停止信号触发于模型处理阶段，退出交易循环。")
+                break
             ctx = MODEL_CONTEXTS[model_key]
             with activate_context(ctx):
                 run_all_symbols_parallel(ctx.display)
                 capture_balance_snapshot(ctx, cycle_timestamp)
                 refresh_overview_from_context(ctx)
 
+        if STOP_EVENT.is_set():
+            break
+
         record_overview_point(cycle_timestamp)
         history_store.compress_if_needed(datetime.now())
-        time.sleep(60)
+        # 末尾休眠可被停止信号打断
+        sleep_interruptible(60)
 
 
 if __name__ == "__main__":
@@ -2940,3 +2859,17 @@ def get_active_context() -> ModelContext:
     if ACTIVE_CONTEXT is None:
         raise RuntimeError("当前没有激活的模型上下文。")
     return ACTIVE_CONTEXT
+
+
+def sleep_interruptible(total_seconds: int) -> None:
+    """
+    按秒睡眠并检查 STOP_EVENT，收到停止信号时提前返回。
+    """
+    try:
+        total_seconds = int(total_seconds)
+    except Exception:
+        total_seconds = 0
+    for _ in range(max(0, total_seconds)):
+        if STOP_EVENT.is_set():
+            break
+        time.sleep(1)

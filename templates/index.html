@@ -33,6 +33,16 @@
                     <i class="far fa-clock"></i>
                     <span id="lastUpdate">--</span>
                 </div>
+                <!-- 我新增的：前端控制开关（自动刷新）与手动刷新按钮 -->
+                <div class="header-controls" style="display:flex;align-items:center;gap:10px;margin-left:12px;">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">
+                        <input type="checkbox" id="autoRefreshToggle" checked>
+                        <span>自动刷新</span>
+                    </label>
+                    <button id="manualRefreshBtn" title="立即刷新" style="display:inline-flex;align-items:center;justify-content:center;padding:6px 10px;border-radius:6px;border:1px solid #2a2a40;background:#151530;color:#fff;cursor:pointer;">
+                        <i class="fas fa-rotate-right"></i>
+                    </button>
+                </div>
             </div>
         </header>
 

@@ -17,6 +17,10 @@ app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"), stati
 DEFAULT_MODEL = deepseekok2.DEFAULT_MODEL_KEY
 CORS(app)
 
+# 交易机器人线程句柄（便于启停）
+bot_thread: threading.Thread | None = None
+thread_lock = threading.Lock()
+
 
 def get_snapshot(model_key: str):
     try:
@@ -39,6 +43,50 @@ def index():
         return render_template("index.html")
     except Exception as e:
         return f"<h1>模板加载错误</h1><p>{str(e)}</p><p>模板路径: {app.template_folder}</p>"
+
+
+# 机器人启停接口
+@app.route("/api/bot/status")
+def bot_status():
+    """返回机器人运行状态"""
+    running = bot_thread is not None and bot_thread.is_alive()
+    return jsonify({"running": running})
+
+
+@app.route("/api/bot/start", methods=["POST"])
+def start_bot():
+    """启动交易机器人线程（如果未运行）"""
+    global bot_thread
+    with thread_lock:
+        if bot_thread is not None and bot_thread.is_alive():
+            return jsonify({"ok": True, "running": True, "message": "机器人已在运行"})
+        # 清除停止信号
+        deepseekok2.clear_stop_signal()
+
+        # 阻塞执行一次初始化，避免与交易循环并发
+        try:
+            print("⏳ 正在执行启动前初始化（initialize_data）...")
+            initialize_data()
+            print("✅ 启动前初始化完成")
+        except Exception as e:
+            print(f"❌ 启动前初始化失败: {e}")
+            return jsonify({"ok": False, "running": False, "message": f"初始化失败: {e}"}), 500
+
+        # 启动交易主线程
+        bot_thread = threading.Thread(target=run_trading_bot, daemon=True)
+        bot_thread.start()
+    return jsonify({"ok": True, "running": True, "message": "机器人已启动（含一次初始化）"})
+
+
+@app.route("/api/bot/stop", methods=["POST"])
+def stop_bot():
+    """请求停止交易机器人线程"""
+    global bot_thread
+    with thread_lock:
+        if bot_thread is None or not bot_thread.is_alive():
+            return jsonify({"ok": True, "running": False, "message": "机器人未在运行"})
+        deepseekok2.request_stop_trading_bot()
+    return jsonify({"ok": True, "running": False, "message": "已发送停止信号"})
 
 
 @app.route("/api/dashboard")
@@ -268,11 +316,10 @@ if __name__ == "__main__":
     print("🚀 启动多交易对交易机器人Web监控...")
     print("=" * 60 + "\n")
 
-    initialize_data()
+    # initialize_data()
 
-    # 启动交易机器人线程
-    bot_thread = threading.Thread(target=run_trading_bot, daemon=True)
-    bot_thread.start()
+    # 默认不自动启动交易机器人，可在前端通过“电源”按钮启动
+    print("⏹ 交易机器人默认未启动。可在前端点击右上角电源按钮启动。")
 
     # 禁用Flask/Werkzeug的HTTP请求日志输出
     log = logging.getLogger("werkzeug")

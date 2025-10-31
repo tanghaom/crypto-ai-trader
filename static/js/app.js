@@ -13,6 +13,13 @@ let currentSymbol = 'BTC/USDT:USDT';
 let homeRange = '1d';
 let modelRange = '7d';
 
+// 我新增的：自动刷新控制相关状态
+let autoRefreshEnabled = true; // 默认开启
+let pollTimer = null; // 轮询定时器句柄
+
+// 我新增的：机器人运行状态
+let botRunning = false;
+
 // ==================== 初始化 ====================
 document.addEventListener('DOMContentLoaded', async () => {
     await loadModelsMetadata();
@@ -20,7 +27,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     initRangeSelectors();
     initEventHandlers();
     switchView('home');
-    setInterval(pollData, 10000);
+
+    // 我新增的：初始化自动刷新与按钮事件
+    setupRefreshControls();
+
+    // 我新增的：加载机器人状态并设置按钮
+    await refreshBotStatus();
+    setupBotControls();
+
+    // 将原来的固定 setInterval 改为可控的定时器
+    startPolling();
 });
 
 async function loadModelsMetadata() {
@@ -87,6 +103,130 @@ function initEventHandlers() {
             const modelKey = row.getAttribute('data-model');
             switchView('model', modelKey);
         });
+    }
+}
+
+// 我新增的：自动刷新与手动刷新控制
+function setupRefreshControls() {
+    const toggle = document.getElementById('autoRefreshToggle');
+    const manualBtn = document.getElementById('manualRefreshBtn');
+
+    if (toggle) {
+        // 初始化勾选状态
+        autoRefreshEnabled = toggle.checked;
+        toggle.addEventListener('change', () => {
+            autoRefreshEnabled = toggle.checked;
+            if (autoRefreshEnabled) {
+                startPolling();
+            } else {
+                stopPolling();
+            }
+        });
+    }
+
+    if (manualBtn) {
+        manualBtn.addEventListener('click', async () => {
+            // 手动立即刷新当前视图数据
+            await pollData();
+        });
+    }
+}
+
+// 我新增的：机器人启停控制
+function setupBotControls() {
+    // 将按钮放在 header-controls 内，沿用现有容器，保持UI紧凑
+    const controls = document.querySelector('.header-controls');
+    if (!controls) return;
+
+    // 如果已存在，避免重复添加
+    if (document.getElementById('botToggleBtn')) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'botToggleBtn';
+    btn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;padding:6px 10px;border-radius:6px;border:1px solid #2a2a40;background:#0f2a30;color:#c8f3ff;cursor:pointer;';
+    btn.innerHTML = '<i class="fas fa-power-off"></i>';
+    btn.title = '启动/停止 交易机器人';
+    btn.addEventListener('click', async () => {
+        await toggleBot();
+    });
+
+    controls.appendChild(btn);
+    updateBotToggleButton();
+}
+
+async function refreshBotStatus() {
+    try {
+        const res = await fetch('/api/bot/status');
+        const data = await res.json();
+        botRunning = !!data.running;
+        updateBotToggleButton();
+    } catch (e) {
+        console.error('获取机器人状态失败:', e);
+    }
+}
+
+async function toggleBot() {
+    try {
+        const endpoint = botRunning ? '/api/bot/stop' : '/api/bot/start';
+        const res = await fetch(endpoint, { method: 'POST' });
+        const data = await res.json();
+        if (typeof data.running === 'boolean') {
+            botRunning = data.running;
+        } else {
+            botRunning = !botRunning;
+        }
+        updateBotToggleButton();
+        // 启动后，立即刷新一次数据并更新状态
+        if (botRunning) {
+            await pollData();
+        }
+        await refreshBotStatus();
+    } catch (e) {
+        console.error('切换机器人状态失败:', e);
+    }
+}
+
+function updateBotToggleButton() {
+    const btn = document.getElementById('botToggleBtn');
+    const statusBadge = document.getElementById('statusBadge');
+    if (!btn) return;
+
+    if (botRunning) {
+        btn.style.background = '#15351a';
+        btn.style.color = '#c8facc';
+        btn.title = '点击停止交易机器人';
+        if (statusBadge) {
+            statusBadge.textContent = '运行中';
+            statusBadge.classList.remove('paused');
+            statusBadge.classList.add('running');
+        }
+    } else {
+        btn.style.background = '#3a1a1a';
+        btn.style.color = '#ffd6d6';
+        btn.title = '点击启动交易机器人';
+        if (statusBadge) {
+            statusBadge.textContent = '已停止';
+            statusBadge.classList.remove('running');
+            statusBadge.classList.add('paused');
+        }
+    }
+}
+
+function startPolling() {
+    stopPolling(); // 确保不重复启动
+    if (!autoRefreshEnabled) return;
+    // 每 10 秒轮询一次
+    pollTimer = setInterval(async () => {
+        await pollData();
+        // 同步刷新机器人状态标签（轻量请求）
+        refreshBotStatus();
+    }, 10000);
+}
+
+function stopPolling() {
+    if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
     }
 }
 

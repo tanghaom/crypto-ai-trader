@@ -1,0 +1,3 @@
+# -*- coding: utf-8 -*-
+# 将项目的配置集中在 config 包中，便于统一管理与复用。
+# 使用方法：from config.settings import ...

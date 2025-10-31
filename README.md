@@ -76,7 +76,7 @@ python web_server.py
 
 然后在浏览器访问 `http://localhost:8080` 查看实时监控面板。
 
-> 💡 **提示**: `web_server.py` 会自动启动交易机器人，无需单独运行 `deepseekok2.py`
+> 💡 提示: `web_server.py` 会自动启动交易机器人，无需单独运行 `deepseekok2.py`
 
 ## 📁 项目结构
 
@@ -87,6 +87,10 @@ alpha-okx-deepseek-qwen/
 ├── requirements.txt            # 项目依赖
 ├── .env                        # 环境变量配置（需创建）
 ├── .gitignore                  # Git 忽略配置
+│
+├── config/                     # 统一配置目录（新增）
+│   ├── __init__.py
+│   └── settings.py             # 集中化配置入口
 │
 ├── scripts/                    # 工具脚本
 │   ├── export_history.py      # 导出交易历史到 Excel
@@ -112,23 +116,31 @@ alpha-okx-deepseek-qwen/
 
 ### 交易对配置
 
-在 `deepseekok2.py` 中修改 `TRADE_CONFIGS` 字典来配置交易对及其参数：
+从 v2 起，所有配置已集中到 `config/settings.py`。修改 `TRADE_CONFIGS` 字典以配置交易对及其参数：
 
 ```python
-TRADE_CONFIGS = {
-    'BTC-USDT-SWAP': {
-        'leverage': 10,          # 杠杆倍数
-        'interval': 5,           # 分析间隔（分钟）
-        'short_window': 20,      # 短期窗口
-        'long_window': 50        # 长期窗口
+from config.settings import TRADE_CONFIGS
+
+TRADE_CONFIGS.update({
+    "ETH/USDT:USDT": {
+        "display": "ETH-USDT",
+        "amount": 0.001,
+        "leverage": 2,
+        "leverage_min": 1,
+        "leverage_max": 3,
+        "leverage_default": 2,
+        "leverage_step": 1,
+        "timeframe": "5m",
+        "test_mode": False,
+        "data_points": 96,
+        "analysis_periods": {"short_term": 20, "medium_term": 50, "long_term": 96},
     },
-    # 添加更多交易对...
-}
+})
 ```
 
 ### 仓位配置
 
-根据风险偏好调整仓位比例（在 `deepseekok2.py` 开头）：
+根据风险偏好调整仓位比例（同样位于 `config/settings.py`）：
 
 ```python
 CONFIDENCE_RATIOS = {
